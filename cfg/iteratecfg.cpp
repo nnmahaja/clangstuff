@@ -19,23 +19,6 @@ using namespace clang;
 using namespace clang::driver;
 using namespace clang::tooling;
 
-class DeclOrStmtPtr {
-private:
-  clang::Decl* decl;
-  clang::Stmt* stmt;
-public:
-  typedef enum {DECL, STMT} value_type;
-  value_type type;
-  DeclOrStmtPtr(clang::Decl* v) : decl(v), stmt(nullptr), type(DECL) {}
-  DeclOrStmtPtr(clang::Stmt* v) : decl(nullptr), stmt(v), type(STMT) {}
-  clang::Decl* getAsDecl() {
-    return decl;
-  }
-  clang::Stmt* getAsStmt() {
-    return stmt;
-  }
-};
-
 using vardeclset_type = llvm::SmallPtrSet< clang::VarDecl*, 30 >;
 
 /*
@@ -255,20 +238,47 @@ public:
 	case clang::CFGElement::Statement: {
 	  
 	  const Stmt *stmt = e.castAs<CFGStmt>().getStmt();
-	  if (const BinaryOperator* bop = dyn_cast<BinaryOperator>(stmt)) {
-            if (bop->getOpcode() == BO_Assign) {
-	      const clang::DeclRefExpr* dref = llvm::dyn_cast<clang::DeclRefExpr>(bop->getLHS());
-	      if (dref) {
-		const_stmt_set s; s.insert(bop);
-		gens[dref->getDecl()] = s;
-	      }
-	    }
-	  }
-	  
 	  if (const clang::DeclStmt* dstmt = llvm::dyn_cast<clang::DeclStmt>(stmt)) {
 	    if (dstmt->isSingleDecl()) {
 	      const_stmt_set s; s.insert(dstmt);
 	      gens[dstmt->getSingleDecl()] = s;
+	    }
+	  }
+	  
+	  if (const clang::BinaryOperator* bop = llvm::dyn_cast<clang::BinaryOperator>(stmt)) {
+	    switch(bop->getOpcode()) {
+	      case BO_Assign:
+	      case BO_MulAssign: 
+	      case BO_DivAssign:
+	      case BO_RemAssign:
+	      case BO_AddAssign:
+	      case BO_SubAssign:
+	      case BO_ShlAssign:
+	      case BO_ShrAssign:
+	      case BO_AndAssign:
+	      case BO_XorAssign:
+	      case BO_OrAssign: {
+		if (auto dref = llvm::dyn_cast<clang::DeclRefExpr>(bop->getLHS())) {
+		  const_stmt_set s; s.insert(bop);
+		  gens[dref->getDecl()] = s;
+		}
+	      }
+	      default: {} // do nothing
+	    }
+	  }
+	  
+	  if (const clang::UnaryOperator* uop = llvm::dyn_cast<clang::UnaryOperator>(stmt)) {
+	    switch(uop->getOpcode()) {
+	      case UO_PostInc:
+	      case UO_PostDec:
+	      case UO_PreInc:
+	      case UO_PreDec: {
+		if (clang::DeclRefExpr* var = llvm::dyn_cast<clang::DeclRefExpr>(uop->getSubExpr())) {
+		  const_stmt_set s; s.insert(uop);
+		  gens[var->getDecl()] = s;
+		}
+	      }
+	      default: {}// do nothing
 	    }
 	  }
 	  
@@ -289,24 +299,51 @@ public:
 	case clang::CFGElement::Statement: {
 	  
 	  const Stmt *stmt = e.castAs<CFGStmt>().getStmt();
-	  if (const BinaryOperator* bop = dyn_cast<BinaryOperator>(stmt)) {
-            if (bop->getOpcode() == BO_Assign) {
-	      const clang::DeclRefExpr* dref = llvm::dyn_cast<clang::DeclRefExpr>(bop->getLHS());
-	      if (!all_defs[dref->getDecl()].empty()) {
-		for (const clang::Stmt* d: all_defs[dref->getDecl()]) {
-		  if (d != bop) kills[dref->getDecl()].insert(d);
-		}
+	  
+	  if (const clang::DeclStmt* dstmt = llvm::dyn_cast<clang::DeclStmt>(stmt)) {
+	    if (dstmt->isSingleDecl()) {
+	      for (const clang::Stmt* d: all_defs[dstmt->getSingleDecl()]) {
+		if (d != dstmt) kills[dstmt->getSingleDecl()].insert(d);
 	      }
 	    }
 	  }
 	  
-	  if (const clang::DeclStmt* dstmt = llvm::dyn_cast<clang::DeclStmt>(stmt)) {
-	    if (dstmt->isSingleDecl()) {
-	      if (!all_defs[dstmt->getSingleDecl()].empty()) {
-		for (const clang::Stmt* d: all_defs[dstmt->getSingleDecl()]) {
-		  if (d != dstmt) kills[dstmt->getSingleDecl()].insert(d);
+	  if (const clang::BinaryOperator* bop = llvm::dyn_cast<clang::BinaryOperator>(stmt)) {
+	    switch(bop->getOpcode()) {
+	      case BO_Assign:
+	      case BO_MulAssign: 
+	      case BO_DivAssign:
+	      case BO_RemAssign:
+	      case BO_AddAssign:
+	      case BO_SubAssign:
+	      case BO_ShlAssign:
+	      case BO_ShrAssign:
+	      case BO_AndAssign:
+	      case BO_XorAssign:
+	      case BO_OrAssign: {
+		if (auto dref = llvm::dyn_cast<clang::DeclRefExpr>(bop->getLHS())) {
+		  for (const clang::Stmt* d: all_defs[dref->getDecl()]) {
+		    if (d != bop) kills[dref->getDecl()].insert(d);
+		  }
 		}
 	      }
+	      default: {} // do nothing
+	    }
+	  }
+	  
+	  if (const clang::UnaryOperator* uop = llvm::dyn_cast<clang::UnaryOperator>(stmt)) {
+	    switch(uop->getOpcode()) {
+	      case UO_PostInc:
+	      case UO_PostDec:
+	      case UO_PreInc:
+	      case UO_PreDec: {
+		if (clang::DeclRefExpr* var = llvm::dyn_cast<clang::DeclRefExpr>(uop->getSubExpr())) {
+		  for (const clang::Stmt* d: all_defs[var->getDecl()]) {
+		    if (d != uop) kills[var->getDecl()].insert(d);
+		  }
+		}
+	      }
+	      default: {}// do nothing
 	    }
 	  }
 	  
@@ -370,7 +407,6 @@ public:
     
     return defs;
   }
-  
   
   stmt_varref_map CollectUses(const std::unique_ptr<clang::CFG>& fn_cfg) {
     stmt_varref_map uses;
@@ -601,7 +637,7 @@ public:
     }
     llvm::outs() << "\n";*/
     
-    bb_defs_map reaches;
+    bb_defs_map reach_out;
     bb_defs_map kills, gens;
     
     // local calculations (each block) for gen and kill
@@ -640,7 +676,7 @@ public:
       kills[b] = k;
       gens[b] = g;
       
-      reaches[b] = defs_map();
+      reach_out[b] = defs_map();
     }
     
     // global calculations on the entier cfg
@@ -651,12 +687,12 @@ public:
       for (auto itr = fn_cfg->rbegin(); itr != fn_cfg->rend(); ++itr) {
 	const clang::CFGBlock* b = *itr;
 	
-	auto newreaches = reaches[b];
+	auto newreaches = reach_out[b];
 	
 	defs_map reach_in;
 	for (auto p_itr = b->pred_begin(); p_itr != b->pred_end(); ++p_itr) {
 	  const clang::CFGBlock* p = *p_itr;
-	  for (auto d : reaches[p]) {
+	  for (auto d : reach_out[p]) {
 	    const clang::Decl* def_decl = d.first;
 	    for (const clang::Stmt* stmt: d.second) {
 	      reach_in[def_decl].insert(stmt);
@@ -666,27 +702,31 @@ public:
 	
 	/*
 	llvm::outs() << "processing " << b->getBlockID() << "...\n";
-// 	llvm::outs() << "-------------reach_in-----------\n";
-// 	print_defs(reach_in);
-// 	llvm::outs() << "-------------kills-----------\n";
-// 	print_defs(kills[b]);
+	llvm::outs() << "-------------reach_in-----------\n";
+	print_defs(reach_in);
+	llvm::outs() << "-------------kills-----------\n";
+	print_defs(kills[b]);
 	llvm::outs() << "-------------gens-----------\n";
-	print_defs(gens[b]);
+	print_defs(gens[b]);*/
 	
 	// newreaches = gen U (reach_in - kill)
 	auto diff = def_diff(reach_in, kills[b]);
-// 	auto gen_u_diff = def_union(gens[b], diff);
-// 	newreaches = def_union(newreaches, gen_u_diff);
+	auto gen_u_diff = def_union(gens[b], diff);
+	newreaches = def_union(newreaches, gen_u_diff);
 	
+	/*
 	llvm::outs() << "-------------diff-----------\n";
-	print_defs(diff);
+	print_defs(diff);*/
+	
 	newreaches = def_union(gens[b], diff);
+	
+	/*
 	llvm::outs() << "-------------newreaches-----------\n";
 	print_defs(newreaches);*/
 	
 	
 	
-	if (!equals(newreaches, reaches[b])) {
+	if (!equals(newreaches, reach_out[b])) {
 	  /*
 	  llvm::outs() << b->getBlockID() << ":\n";
 	  llvm::outs() << "~~~~~~~~~~~~~~~newreaches~~~~~~~~~~~\n";
@@ -714,7 +754,7 @@ public:
 	  }
 	  llvm::outs() << "\n";
 	  */
-	  reaches[b] = newreaches;
+	  reach_out[b] = newreaches;
 	  changed = true;
 	}
       }
@@ -739,7 +779,94 @@ public:
       llvm::outs() << "--------------------------------------------\n\n";
     }*/
     
+    bb_defs_map reach_in;
+    for (auto itr = fn_cfg->rbegin(); itr != fn_cfg->rend(); ++itr) {
+      const clang::CFGBlock* bb = *itr;
+      defs_map d_in;
+      
+      for (auto p_itr = bb->pred_begin(); p_itr != bb->pred_end(); ++p_itr) {
+	const clang::CFGBlock* p = *p_itr;
+	for (auto d : reach_out[p]) {
+	  const clang::Decl* def_decl = d.first;
+	  std::copy(d.second.begin(), d.second.end(), std::inserter(d_in[def_decl], d_in[def_decl].begin()));
+	}
+      }
+      
+      reach_in[bb] = d_in;
+    }
+    
+    /*
+    llvm::outs() << "\n\n~~~~~~~~~~~~~~~~~~reach_in~~~~~~~~~~~~~~~~~~~\n";
+    for (auto r_e : reach_in) {
+      llvm::outs() << r_e.first->getBlockID() << ":\n";
+      llvm::outs() << "--------------------------------------------\n";
+      for (auto e : r_e.second) {
+	if(const clang::VarDecl* vdecl = llvm::dyn_cast<clang::VarDecl>(e.first)) {
+	  llvm::outs() << vdecl->getNameAsString() << ": \n";
+	  for (const Stmt* s : e.second) {
+	    s->dumpPretty(*ast_ctx);
+	    llvm::outs() << "\n";
+	  }
+	  llvm::outs() << "\n";
+	}
+      }
+      llvm::outs() << "--------------------------------------------\n\n";
+    }*/
+    
     // build use-def chains, need to calculate defs that reach uses locally
+    llvm::DenseMap< const clang::DeclRefExpr*, const_stmt_set > use_def_chain;
+    for (auto itr = fn_cfg->rbegin(); itr != fn_cfg->rend(); ++itr) {
+      const clang::CFGBlock* bb = *itr;
+      // get reach_in
+      defs_map r_in = reach_in[bb];
+      
+      // go over the block and build use_def_chain for each use
+      for (const clang::CFGElement e : *bb) {
+	switch(e.getKind()) {
+	  case clang::CFGElement::Statement: {
+	    
+	    const Stmt *stmt = e.castAs<CFGStmt>().getStmt();
+	    // for all uses in this stmt, update use_def_chain
+	    for (auto u : uses[stmt]) {
+	      use_def_chain[u] = r_in[u->getDecl()];
+	    }
+	    // if stmt is a def, remove all killed defs from r_in
+	    // we determine if the statement is a def by searching for this statement in all_defs
+	    for (auto e : all_defs) {
+	      if (std::find(e.second.begin(), e.second.end(), stmt) != e.second.end()) {
+		// stmt us a def!
+		const_stmt_set s; s.insert(stmt);
+		r_in[e.first] = s;
+	      }
+	    }
+	    break;
+	  }
+	  default: llvm_unreachable("cfg element not handled...");
+	}
+      }
+      
+    }
+    
+//     SourceManager sm = TheRewriter.getSourceMgr();
+    // print def use info
+    for (auto itr = fn_cfg->rbegin(); itr != fn_cfg->rend(); ++itr) {
+      const clang::CFGBlock* bb = *itr;
+      llvm::outs() << "-----------------------BB#" << bb->getBlockID() << "-----------------------\n";
+      for (const clang::CFGElement e : *bb) {
+	if (const Stmt *stmt = e.castAs<CFGStmt>().getStmt()) {
+	  auto stmt_line = TheRewriter.getSourceMgr().getPresumedLineNumber(stmt->getLocStart());
+	  llvm::outs() << "stmt line#" << stmt_line << ": ";
+	  for (auto u : uses[stmt]) {
+	    for (auto def_stmt : use_def_chain[u]) {
+	      auto def_stmt_line = TheRewriter.getSourceMgr().getPresumedLineNumber(def_stmt->getLocStart());
+	      llvm::outs() << def_stmt_line << " ";
+	    }
+	  }
+	  llvm::outs() << "\n";
+	}
+      }
+      llvm::outs() << "----------------------------------------------\n\n";
+    }
     
   }
   
