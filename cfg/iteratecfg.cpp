@@ -901,8 +901,8 @@ public:
   }
   
 private:
-  Rewriter &TheRewriter;
-  ASTContext* ast_ctx;
+  Rewriter &_rewriter;
+  ASTContext* _ast_ctx;
 };
 
 // Implementation of the ASTConsumer interface for reading an AST produced
@@ -951,7 +951,7 @@ public:
   }
 
 private:
-  Rewriter TheRewriter;
+  Rewriter _rewriter;
 };
 
 int main(int argc, const char **argv) {
