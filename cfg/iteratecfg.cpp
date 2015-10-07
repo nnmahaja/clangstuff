@@ -907,9 +907,9 @@ private:
 
 // Implementation of the ASTConsumer interface for reading an AST produced
 // by the Clang parser.
-class KanorASTConsumer : public ASTConsumer {
+class TestASTConsumer : public ASTConsumer {
 public:
-  KanorASTConsumer(Rewriter &R, ASTContext* actx) : visitor(R, actx) {}
+  TestASTConsumer(Rewriter &R, ASTContext* actx) : visitor(R, actx) {}
 
   // Override the method that gets called for each parsed top-level
   // declaration.
@@ -935,9 +935,9 @@ private:
 };
 
 // For each source file provided to the tool, a new FrontendAction is created.
-class KFrontendAction : public ASTFrontendAction {
+class TestFrontAction : public ASTFrontendAction {
 public:
-  KFrontendAction() {}
+  TestFrontAction() {}
     
   void EndSourceFileAction() override {
     // Now emit the rewritten buffer.
