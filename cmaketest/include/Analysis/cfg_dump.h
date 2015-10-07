@@ -18,7 +18,7 @@
 class FuncVisitor : public clang::RecursiveASTVisitor<FuncVisitor> {
 public:
   
-  FuncVisitor(clang::Rewriter &R, clang::ASTContext* actx) : TheRewriter(R), ast_ctx(actx) {}
+  FuncVisitor(clang::Rewriter &R, clang::ASTContext* actx) : _rewriter(R), _ast_ctx(actx) {}
   bool VisitFunctionDecl(clang::FunctionDecl* fdecl);
   
 private:
@@ -65,8 +65,8 @@ public:
 
   std::unique_ptr<clang::ASTConsumer>
   CreateASTConsumer(clang::CompilerInstance &CI, StringRef file) override {
-    TheRewriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
-    return llvm::make_unique<MyASTConsumer>(TheRewriter, &(CI.getASTContext()));
+    _rewriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
+    return llvm::make_unique<MyASTConsumer>(_rewriter, &(CI.getASTContext()));
   }
 
 private:

@@ -52,11 +52,12 @@ defs_set CollectAllDefs(const std::unique_ptr<clang::CFG>& fn_cfg) {
 bool FuncVisitor::VisitFunctionDecl(clang::FunctionDecl* fdecl) {
     
   if (!fdecl->hasBody()) return true;
-  if (!TheRewriter.getSourceMgr().isInMainFile(fdecl->getLocStart())) return true;
+  if (!_rewriter.getSourceMgr().isInMainFile(fdecl->getLocStart())) return true;
   
-  std::unique_ptr<clang::CFG> fn_cfg = clang::CFG::buildCFG(fdecl, fdecl->getBody(), ast_ctx, clang::CFG::BuildOptions());
+//   std::unique_ptr<clang::CFG> fn_cfg = clang::CFG::buildCFG(fdecl, fdecl->getBody(), ast_ctx, clang::CFG::BuildOptions());
+//   fn_cfg->dump(LangOptions(), true);
   
-  fn_cfg->dump(LangOptions(), true);
+  fdecl->getBody()->dump();
   
   return true;
 }
